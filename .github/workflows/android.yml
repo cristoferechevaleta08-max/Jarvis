@@ -33,7 +33,7 @@ jobs:
             -o /tmp/jarvis-kws/model.tar.bz2
           tar -xjf /tmp/jarvis-kws/model.tar.bz2 -C /tmp/jarvis-kws
           MODEL_DIR="$(find /tmp/jarvis-kws -mindepth 1 -maxdepth 1 -type d | head -n 1)"
-          python -m pip install --disable-pip-version-check sherpa-onnx==1.13.8 sentencepiece
+          python -m pip install --disable-pip-version-check sherpa-onnx==1.13.8 sentencepiece click
           printf 'JARVIS @JARVIS\n' > /tmp/jarvis-kws/keywords_raw.txt
           sherpa-onnx-cli text2token \
             --tokens "$MODEL_DIR/tokens.txt" \
