@@ -41,7 +41,7 @@ jobs:
           model_dir = pathlib.Path(sys.argv[1])
           tokenizer = spm.SentencePieceProcessor(model_file=str(model_dir / "bpe.model"))
           tokens = tokenizer.encode("JARVIS", out_type=str)
-          (model_dir / "keywords.txt").write_text(" ".join(tokens) + " @JARVIS\\n", encoding="utf-8")
+          (model_dir / "keywords.txt").write_text(" ".join(tokens) + " @JARVIS\n", encoding="utf-8")
           print("Wake phrase tokens:", tokens)
           PY
           cp "$MODEL_DIR/encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx" app/src/main/assets/jarvis-kws/
