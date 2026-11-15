@@ -50,7 +50,7 @@ Guarda la dirección. Con conexión a Internet, escribe o di «Jarvis» seguido 
 ## Limitaciones actuales
 - El usuario debe desplegar el Worker y proporcionar su URL; el repositorio no contiene secretos ni puede desplegarlo dentro de la cuenta del usuario sin autorización.
 - La escucha se inicia automáticamente al abrir la aplicación y después de conceder el permiso de micrófono. Android exige que el usuario conceda ese permiso; ninguna app legítima puede saltarse ese diálogo. Esta versión solo escucha mientras JARVIS está abierto y visible. Para escuchar con la pantalla apagada o la app en segundo plano hace falta un servicio de micrófono en primer plano con notificación persistente y pruebas específicas en Huawei; aún no está implementado.
-- El reconocimiento de voz depende del proveedor instalado en Android. No se presupone que Huawei tenga Google Speech Services.
+- La transcripción de preguntas depende del proveedor de voz instalado en Android; el detector local de palabra clave no depende de Google Play Services.
 - El tono grave depende del motor y las voces TTS disponibles en el dispositivo; no se puede garantizar una voz masculina idéntica en todos los teléfonos.
 - Los comandos locales todavía no ejecutan acciones arbitrarias ni controlan ajustes sensibles del teléfono.
 
