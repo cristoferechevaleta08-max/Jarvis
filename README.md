@@ -5,8 +5,8 @@ Aplicación Android nativa en Kotlin + Jetpack Compose. Las funciones básicas d
 ## Funciones de la aplicación
 - Interfaz conversacional móvil con tema oscuro futurista.
 - Entrada de texto y reconocimiento de voz en español mediante el proveedor de voz disponible en Android.
-- Escucha manos libres automática al abrir la aplicación: solicita el permiso de micrófono la primera vez y, una vez concedido, espera la palabra **«Jarvis»** sin que el usuario tenga que pulsar un botón. Acepta la pregunta en la misma frase o en la siguiente.
-- La escucha se pausa mientras se procesa una consulta a la IA y se reanuda después. En esta versión funciona mientras la aplicación permanece abierta y visible; todavía no es un servicio permanente para escuchar con la aplicación cerrada o la pantalla apagada.
+- Servicio de micrófono en primer plano con notificación persistente y motor sherpa-onnx para detectar localmente la palabra **«Jarvis»**. Mientras espera, el audio se procesa en el dispositivo y no se envía a la nube.
+- El servicio de escucha puede continuar con la pantalla apagada mientras Android y la gestión de batería del fabricante lo permitan. Debe iniciarse desde la aplicación visible después de conceder el permiso de micrófono; Android muestra una notificación permanente.
 - Síntesis de voz local en español.
 - Historial local persistente de hasta 100 mensajes.
 - Comandos locales: hora, fecha, batería, ayuda, identidad y borrar conversación.
@@ -49,7 +49,9 @@ Guarda la dirección. Con conexión a Internet, escribe o di «Jarvis» seguido 
 
 ## Limitaciones actuales
 - El usuario debe desplegar el Worker y proporcionar su URL; el repositorio no contiene secretos ni puede desplegarlo dentro de la cuenta del usuario sin autorización.
-- La escucha se inicia automáticamente al abrir la aplicación y después de conceder el permiso de micrófono. Android exige que el usuario conceda ese permiso; ninguna app legítima puede saltarse ese diálogo. Esta versión solo escucha mientras JARVIS está abierto y visible. Para escuchar con la pantalla apagada o la app en segundo plano hace falta un servicio de micrófono en primer plano con notificación persistente y pruebas específicas en Huawei; aún no está implementado.
+- La detección local utiliza un modelo KWS entrenado en inglés. Su precisión con pronunciación y acentos españoles debe validarse y ajustarse en el Huawei Nova Y90.
+- Después de detectar «Jarvis», la captura de la pregunta utiliza el proveedor de reconocimiento de voz instalado en Android. El detector local no depende de Google Play Services, pero la transcripción sí requiere un proveedor compatible.
+- Android exige que el usuario conceda el permiso de micrófono y que el servicio de micrófono en primer plano se inicie mientras la aplicación está visible. No es posible saltarse esos controles del sistema. EMUI puede aplicar restricciones de batería; hay que validar el comportamiento real con la pantalla apagada en el Huawei Nova Y90.
 - La transcripción de preguntas depende del proveedor de voz instalado en Android; el detector local de palabra clave no depende de Google Play Services.
 - El tono grave depende del motor y las voces TTS disponibles en el dispositivo; no se puede garantizar una voz masculina idéntica en todos los teléfonos.
 - Los comandos locales todavía no ejecutan acciones arbitrarias ni controlan ajustes sensibles del teléfono.
