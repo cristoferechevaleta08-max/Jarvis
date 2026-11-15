@@ -15,10 +15,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.Handler
 import android.os.Looper
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
-import android.speech.SpeechRecognizer.RESULTS_RECOGNITION
+import android.util.Base64
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.core.app.NotificationCompat
@@ -36,6 +33,8 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.concurrent.thread
 
 /**
@@ -51,7 +50,6 @@ class JarvisVoiceService : Service() {
     private var audioRecord: AudioRecord? = null
     private var spotter: KeywordSpotter? = null
     private var stream: OnlineStream? = null
-    private var speechRecognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
 
     override fun onCreate() {
@@ -142,18 +140,63 @@ class JarvisVoiceService : Service() {
                 broadcast(ACTION_STATUS, "JARVIS ESCUCHANDO · DETECCIÓN LOCAL")
 
                 val shorts = ShortArray(SAMPLE_RATE / 10)
-                while (!stopping && !waitingForQuestion) {
+                val rollingAudio = ArrayList<Short>(PRE_ROLL_SAMPLES)
+                var queryAudio: ArrayList<Short>? = null
+                var wakeDetected = false
+                var speechStarted = false
+                var silenceChunks = 0
+                var capturedChunks = 0
+                broadcast(ACTION_STATUS, "JARVIS ESCUCHANDO · DI «JARVIS» PARA ACTIVAR")
+
+                while (!stopping) {
                     val count = recorder.read(shorts, 0, shorts.size)
                     if (count <= 0) continue
-                    val samples = FloatArray(count) { shorts[it] / 32768.0f }
-                    localStream.acceptWaveform(samples, SAMPLE_RATE)
-                    while (localSpotter.isReady(localStream)) {
-                        localSpotter.decode(localStream)
-                        val detected = localSpotter.getResult(localStream).keyword
-                        if (detected.isNotBlank()) {
-                            localSpotter.reset(localStream)
+
+                    if (!wakeDetected) {
+                        for (i in 0 until count) rollingAudio.add(shorts[i])
+                        if (rollingAudio.size > PRE_ROLL_SAMPLES) {
+                            rollingAudio.subList(0, rollingAudio.size - PRE_ROLL_SAMPLES).clear()
+                        }
+                        val samples = FloatArray(count) { shorts[it] / 32768.0f }
+                        localStream.acceptWaveform(samples, SAMPLE_RATE)
+                        var keywordFound = false
+                        while (localSpotter.isReady(localStream)) {
+                            localSpotter.decode(localStream)
+                            if (localSpotter.getResult(localStream).keyword.isNotBlank()) {
+                                localSpotter.reset(localStream)
+                                keywordFound = true
+                                break
+                            }
+                        }
+                        if (keywordFound) {
+                            wakeDetected = true
                             waitingForQuestion = true
-                            mainHandler.post { onWakeWordDetected() }
+                            queryAudio = ArrayList(rollingAudio)
+                            speechStarted = true
+                            broadcast(ACTION_STATUS, "JARVIS ACTIVADO · ESCUCHANDO TU PREGUNTA")
+                        }
+                    } else {
+                        val target = queryAudio ?: continue
+                        for (i in 0 until count) target.add(shorts[i])
+                        capturedChunks++
+                        var energy = 0.0
+                        for (i in 0 until count) {
+                            val value = shorts[i].toDouble() / 32768.0
+                            energy += value * value
+                        }
+                        val rms = kotlin.math.sqrt(energy / count)
+                        if (rms >= SPEECH_RMS_THRESHOLD) {
+                            speechStarted = true
+                            silenceChunks = 0
+                        } else if (speechStarted) {
+                            silenceChunks++
+                        }
+
+                        val finishedBySilence = speechStarted && silenceChunks >= SILENCE_CHUNKS
+                        val finishedByLength = capturedChunks >= MAX_CAPTURE_CHUNKS
+                        if (finishedBySilence || finishedByLength) {
+                            val wav = pcmToWav(target.toShortArray())
+                            mainHandler.post { answerAudioQuestion(wav) }
                             break
                         }
                     }
@@ -178,56 +221,58 @@ class JarvisVoiceService : Service() {
         }
     }
 
-    private fun onWakeWordDetected() {
-        // Wait until AudioRecord and the local KWS stream have been released
-        // before handing the microphone to Android's speech recognizer.
-        if (workerRunning) {
-            mainHandler.postDelayed({ onWakeWordDetected() }, 120L)
+    private fun pcmToWav(samples: ShortArray): ByteArray {
+        val dataSize = samples.size * 2
+        val buffer = ByteBuffer.allocate(44 + dataSize).order(ByteOrder.LITTLE_ENDIAN)
+        fun ascii(value: String) { buffer.put(value.toByteArray(Charsets.US_ASCII)) }
+        ascii("RIFF")
+        buffer.putInt(36 + dataSize)
+        ascii("WAVE")
+        ascii("fmt ")
+        buffer.putInt(16)
+        buffer.putShort(1)
+        buffer.putShort(1)
+        buffer.putInt(SAMPLE_RATE)
+        buffer.putInt(SAMPLE_RATE * 2)
+        buffer.putShort(2)
+        buffer.putShort(16)
+        ascii("data")
+        buffer.putInt(dataSize)
+        samples.forEach { buffer.putShort(it) }
+        return buffer.array()
+    }
+
+    private fun answerAudioQuestion(wav: ByteArray) {
+        val prefs = getSharedPreferences("jarvis_preferences", MODE_PRIVATE)
+        val endpoint = prefs.getString("cloud_ai_endpoint", "").orEmpty().trim()
+        if (endpoint.isBlank()) {
+            val message = "Para entender tu pregunta por voz necesito conectar JARVIS Cloud. Configura la dirección HTTPS del servidor en los ajustes."
+            appendHistory(message, false)
+            broadcast(ACTION_ASSISTANT, message)
+            speakAndResume(message)
             return
         }
-        broadcast(ACTION_STATUS, "JARVIS ACTIVADO · TE ESCUCHO")
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            broadcast(ACTION_STATUS, "PALABRA DETECTADA · NO HAY MOTOR DE TRANSCRIPCIÓN INSTALADO")
-            speakAndResume("Te he escuchado, pero falta un servicio de reconocimiento de voz en este teléfono.")
-            return
-        }
-        runCatching {
-            val recognizer = SpeechRecognizer.createSpeechRecognizer(this)
-            speechRecognizer = recognizer
-            recognizer.setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: android.os.Bundle?) {
-                    broadcast(ACTION_STATUS, "JARVIS TE ESCUCHA · HAZ TU PREGUNTA")
+        broadcast(ACTION_STATUS, "TRANSCRIBIENDO TU PREGUNTA Y CONSULTANDO LA IA…")
+        serviceScope.launch {
+            try {
+                val history = readHistory().takeLast(12).map {
+                    (if (it.first) "user" else "assistant") to it.second
                 }
-                override fun onBeginningOfSpeech() {}
-                override fun onRmsChanged(rmsdB: Float) {}
-                override fun onBufferReceived(buffer: ByteArray?) {}
-                override fun onEndOfSpeech() { broadcast(ACTION_STATUS, "PROCESANDO TU PREGUNTA…") }
-                override fun onError(error: Int) {
-                    speechRecognizer?.destroy()
-                    speechRecognizer = null
-                    speakAndResume("No he podido entenderte. Vuelve a decir Jarvis y tu pregunta.")
+                val (transcript, answer) = CloudAiClient.askAudio(endpoint, wav, history)
+                val cleanQuestion = transcript.replace(Regex("(?i)^\\s*jarvis[\\s,.:;!?¡¿-]*"), "").trim()
+                if (cleanQuestion.isNotBlank()) {
+                    appendHistory(cleanQuestion, true)
+                    broadcast(ACTION_USER, cleanQuestion)
                 }
-                override fun onResults(results: android.os.Bundle?) {
-                    val question = results?.getStringArrayList(RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
-                    speechRecognizer?.destroy()
-                    speechRecognizer = null
-                    if (question.isBlank()) speakAndResume("No he recibido tu pregunta. Inténtalo otra vez.")
-                    else answerQuestion(question)
-                }
-                override fun onPartialResults(partialResults: android.os.Bundle?) {}
-                override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
-            })
-            val request = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-UY")
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "es-UY")
-                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+                appendHistory(answer, false)
+                broadcast(ACTION_ASSISTANT, answer)
+                speakAndResume(answer)
+            } catch (error: Exception) {
+                val message = "No pude procesar tu voz con la IA: ${error.message ?: "revisa la conexión y el servidor"}"
+                appendHistory(message, false)
+                broadcast(ACTION_ASSISTANT, message)
+                speakAndResume(message)
             }
-            recognizer.startListening(request)
-        }.onFailure {
-            broadcast(ACTION_STATUS, "NO SE PUDO INICIAR LA TRANSCRIPCIÓN: ${it.message ?: "error"}")
-            speakAndResume("No puedo iniciar el reconocimiento de voz en este dispositivo.")
         }
     }
 
@@ -300,9 +345,6 @@ class JarvisVoiceService : Service() {
 
     private fun resumeWakeWord() {
         if (stopping) return
-        speechRecognizer?.cancel()
-        speechRecognizer?.destroy()
-        speechRecognizer = null
         waitingForQuestion = false
         startWakeWordLoop()
     }
@@ -365,5 +407,9 @@ class JarvisVoiceService : Service() {
         private const val CHANNEL_ID = "jarvis_voice_service"
         private const val NOTIFICATION_ID = 7102
         private const val SAMPLE_RATE = 16000
+        private const val PRE_ROLL_SAMPLES = SAMPLE_RATE * 2
+        private const val SILENCE_CHUNKS = 18
+        private const val MAX_CAPTURE_CHUNKS = 120
+        private const val SPEECH_RMS_THRESHOLD = 0.012
     }
 }
