@@ -93,37 +93,7 @@ class MainActivity : ComponentActivity() {
         tts?.shutdown()
         super.onDestroy()
 
-        if (showSettings) {
-            AlertDialog(
-                onDismissRequest = { showSettings = false },
-                title = { Text("Conectar JARVIS Cloud") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Introduce la URL HTTPS de tu servidor Cloudflare Worker terminada en /chat. La clave de OpenAI se guarda en el servidor, nunca en el APK.")
-                        OutlinedTextField(
-                            value = endpointDraft,
-                            onValueChange = { endpointDraft = it },
-                            singleLine = true,
-                            placeholder = { Text("https://tu-worker.workers.dev/chat") }
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        val value = endpointDraft.trim()
-                        if (value.isBlank() || value.startsWith("https://")) {
-                            endpoint = value
-                            preferences.edit().putString(SERVER_KEY, value).apply()
-                            showSettings = false
-                            voiceStatus = if (value.isBlank()) "SERVIDOR SIN CONFIGURAR" else "URL DEL SERVIDOR GUARDADA"
-                        } else voiceStatus = "LA URL DEBE COMENZAR CON HTTPS://"
-                    }) { Text("Guardar") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showSettings = false }) { Text("Cancelar") }
-                }
-            )
-        }
+
     }
 }
 
