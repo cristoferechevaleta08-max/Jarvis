@@ -16,36 +16,53 @@ Aplicación Android nativa en Kotlin + Jetpack Compose. Las funciones básicas d
 
 ## Conectar la IA en la nube
 
-La aplicación incluye un cliente Android y un gateway de Cloudflare Workers. El gateway llama a la **OpenAI Responses API**. La clave privada nunca se introduce en la aplicación ni se guarda en el APK.
+JARVIS incluye un gateway propio de Cloudflare Workers. La aplicación Android no contiene claves de proveedores: el gateway se comunica directamente con las API oficiales de OpenAI, Anthropic (Claude) o Google Gemini. El proveedor se selecciona en el servidor mediante `JARVIS_PROVIDER`.
 
-### 1. Crear una clave de API
-Crea una clave de proyecto desde el panel de OpenAI: https://platform.openai.com/api-keys. La API se factura por separado de una suscripción de ChatGPT; revisa los precios y límites antes de usarla.
+### 1. Configurar las claves como secretos
 
-### 2. Desplegar el backend
-Instala Wrangler y autentícate en Cloudflare. Desde la carpeta `cloudflare-worker`:
+Desde la carpeta `cloudflare-worker`, instala Wrangler e inicia sesión:
 
 ```bash
 npx wrangler login
 npx wrangler secret put OPENAI_API_KEY
+npx wrangler secret put ANTHROPIC_API_KEY
+npx wrangler secret put GEMINI_API_KEY
+```
+
+Introduce únicamente las claves de los proveedores que vayas a utilizar. No las pegues en el código, en GitHub, ni en la aplicación Android. Si una clave se expuso, revócala y genera otra.
+
+### 2. Elegir el proveedor y el modelo
+
+Configura el proveedor activo en el entorno de Cloudflare:
+
+```bash
+npx wrangler secret put JARVIS_PROVIDER
+```
+
+El valor debe ser `openai`, `anthropic` o `gemini`. Para cambiar modelos, configura las variables de entorno correspondientes en el panel de Cloudflare Workers:
+
+- OpenAI: `OPENAI_MODEL` (predeterminado: `gpt-5.5`).
+- Claude: `ANTHROPIC_MODEL` (predeterminado: `claude-sonnet-4-5-20250929`).
+- Gemini: `GEMINI_MODEL` (predeterminado: `gemini-2.5-flash`).
+- Transcripción de voz: `OPENAI_TRANSCRIBE_MODEL` (predeterminado: `gpt-4o-mini-transcribe`).
+
+La transcripción de audio sigue utilizando OpenAI; las respuestas conversacionales pueden generarse con cualquiera de los tres proveedores.
+
+### 3. Desplegar el gateway
+
+```bash
 npx wrangler deploy
 ```
 
-Cuando Wrangler solicite el secreto, pega la clave de API. Opcionalmente puedes configurar el modelo mediante la variable `OPENAI_MODEL`; el valor predeterminado del Worker es `gpt-5.5`.
-
-El despliegue mostrará una URL similar a `https://jarvis-cloud.<tu-cuenta>.workers.dev`.
-
-### 3. Configurar la aplicación
-Abre JARVIS, toca el icono de ajustes y pega la URL del Worker añadiendo `/chat`, por ejemplo:
-
-`https://jarvis-cloud.<tu-cuenta>.workers.dev/chat`
-
-Guarda la dirección. Con conexión a Internet, di «Jarvis» seguido de tu pregunta en una sola intervención. El detector local activa la captura, el Worker transcribe el audio y envía el texto al modelo de IA. JARVIS lee la respuesta en voz alta.
+La URL que muestra Cloudflare es la dirección de transporte del gateway propio de JARVIS, no una URL de un proveedor de IA. El gateway llama directamente a los endpoints oficiales de cada proveedor. La aplicación debe conocer la dirección de su gateway para poder comunicarse por Internet.
 
 ### Seguridad y costes
-- No subas claves de OpenAI a GitHub ni las incluyas en el APK.
-- El Worker es un endpoint público: antes de distribuir la aplicación, configura límites de solicitudes y protección contra abuso en Cloudflare (rate limiting) y vigila el consumo de la API.
-- Las conversaciones se envían al proveedor para generar respuestas. El Worker usa `store: false`; aun así, no envíes contraseñas ni datos sensibles.
-- La API de OpenAI requiere facturación/créditos propios; ChatGPT Plus/Free no incluye automáticamente saldo de API.
+
+- Las claves permanecen como secretos del Worker y nunca se compilan dentro del APK.
+- Una clave dentro de un APK puede extraerse; ofuscarla o guardarla en recursos Android no la vuelve secreta.
+- Antes de distribuir JARVIS, protege el gateway con autenticación por instalación/usuario, límites de solicitudes y límites de gasto. CORS no es un mecanismo de autenticación.
+- Supervisa el consumo de cada proveedor. Las API se facturan por separado de las suscripciones de ChatGPT o Claude.
+- Las conversaciones se envían al proveedor seleccionado para generar respuestas. No envíes contraseñas ni datos sensibles.
 
 ## Limitaciones actuales
 - El usuario debe desplegar el Worker y proporcionar su URL; el repositorio no contiene secretos ni puede desplegarlo dentro de la cuenta del usuario sin autorización.
