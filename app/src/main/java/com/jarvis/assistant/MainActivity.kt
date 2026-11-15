@@ -195,6 +195,7 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
     val respondToLatest by rememberUpdatedState(newValue = { phrase: String, voice: Boolean -> respondTo(phrase, fromVoice = voice) })
     val handsFreeLatest by rememberUpdatedState(handsFree)
     val waitingLatest by rememberUpdatedState(waitingForQuestion)
+    val thinkingLatest by rememberUpdatedState(isThinking)
     val statusLatest by rememberUpdatedState<(String) -> Unit>({ voiceStatus = it })
 
     DisposableEffect(speechRecognizer) {
@@ -210,7 +211,7 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
             }
             fun listenAgain() {
                 speechHandler.postDelayed({
-                    if (handsFreeLatest) runCatching { speechRecognizer.startListening(listenIntent) }
+                    if (handsFreeLatest && !thinkingLatest) runCatching { speechRecognizer.startListening(listenIntent) }
                         .onFailure { statusLatest("NO SE PUDO REINICIAR LA ESCUCHA") }
                 }, 650L)
             }
@@ -248,8 +249,8 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
         }
     }
 
-    LaunchedEffect(handsFree) {
-        if (handsFree) {
+    LaunchedEffect(handsFree, isThinking) {
+        if (handsFree && !isThinking) {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                 waitingForQuestion = false
                 speechHandler.post {
@@ -261,7 +262,8 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
                     runCatching { speechRecognizer?.startListening(intent) }.onFailure { voiceStatus = "NO SE PUDO INICIAR EL RECONOCIMIENTO DE VOZ" }
                 }
             } else { handsFree = false; voiceStatus = "SE NECESITA PERMISO DE MICRÓFONO" }
-        } else { waitingForQuestion = false; speechRecognizer?.cancel(); voiceStatus = "MODO MANOS LIBRES DESACTIVADO" }
+        } else if (!handsFree) { waitingForQuestion = false; speechRecognizer?.cancel(); voiceStatus = "MODO MANOS LIBRES DESACTIVADO" }
+        else speechRecognizer?.cancel()
     }
     val speechResultLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
