@@ -174,6 +174,12 @@ class JarvisVoiceService : Service() {
     }
 
     private fun onWakeWordDetected() {
+        // Wait until AudioRecord and the local KWS stream have been released
+        // before handing the microphone to Android's speech recognizer.
+        if (workerRunning) {
+            mainHandler.postDelayed({ onWakeWordDetected() }, 120L)
+            return
+        }
         broadcast(ACTION_STATUS, "JARVIS ACTIVADO · TE ESCUCHO")
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             broadcast(ACTION_STATUS, "PALABRA DETECTADA · NO HAY MOTOR DE TRANSCRIPCIÓN INSTALADO")
