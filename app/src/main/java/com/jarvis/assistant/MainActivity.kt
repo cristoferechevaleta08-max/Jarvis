@@ -114,6 +114,7 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
     var isThinking by remember { mutableStateOf(false) }
     var handsFree by remember { mutableStateOf(false) }
     var waitingForQuestion by remember { mutableStateOf(false) }
+    var pendingHandsFreePermission by remember { mutableStateOf(false) }
     val speechRecognizer = remember(context) { if (SpeechRecognizer.isRecognitionAvailable(context)) SpeechRecognizer.createSpeechRecognizer(context) else null }
     val speechHandler = remember { Handler(Looper.getMainLooper()) }
     val messages = remember(context) {
@@ -259,7 +260,7 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
                     }
                     runCatching { speechRecognizer?.startListening(intent) }.onFailure { voiceStatus = "NO SE PUDO INICIAR EL RECONOCIMIENTO DE VOZ" }
                 }
-            } else { handsFree = false; microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) }
+            } else { handsFree = false; voiceStatus = "SE NECESITA PERMISO DE MICRÓFONO" }
         } else { waitingForQuestion = false; speechRecognizer?.cancel(); voiceStatus = "MODO MANOS LIBRES DESACTIVADO" }
     }
     val speechResultLauncher = rememberLauncherForActivityResult(
@@ -280,16 +281,21 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            handsFree = true
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
-                putExtra(RecognizerIntent.EXTRA_PROMPT, "Di Jarvis y después tu pregunta")
+            if (pendingHandsFreePermission) {
+                pendingHandsFreePermission = false
+                handsFree = true
+            } else {
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
+                    putExtra(RecognizerIntent.EXTRA_PROMPT, "Di Jarvis y después tu pregunta")
+                }
+                runCatching { speechResultLauncher.launch(intent) }
+                    .onSuccess { voiceStatus = "ESCUCHANDO · HABLA AHORA" }
+                    .onFailure { voiceStatus = "NO HAY SERVICIO DE RECONOCIMIENTO DE VOZ INSTALADO" }
             }
-            runCatching { speechResultLauncher.launch(intent) }
-                .onSuccess { voiceStatus = "ESCUCHANDO · HABLA AHORA" }
-                .onFailure { voiceStatus = "NO HAY SERVICIO DE RECONOCIMIENTO DE VOZ INSTALADO" }
         } else {
+            pendingHandsFreePermission = false
             voiceStatus = "PERMISO DE MICRÓFONO DENEGADO"
         }
     }
@@ -396,7 +402,7 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
                         if (handsFree) handsFree = false
                         else if (speechRecognizer == null) voiceStatus = "ESTE DISPOSITIVO NO OFRECE RECONOCIMIENTO DE VOZ"
                         else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) handsFree = true
-                        else microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        else { pendingHandsFreePermission = true; microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) }
                     },
                     enabled = !isThinking,
                     colors = ButtonDefaults.buttonColors(containerColor = if (handsFree) Color(0xFF8B3038) else Color(0xFF123747), contentColor = Color.White)
