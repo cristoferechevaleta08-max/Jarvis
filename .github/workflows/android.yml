@@ -20,6 +20,10 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Set up Python for keyword token generation
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
       - name: Prepare offline wake-word model
         run: |
           set -euo pipefail
@@ -29,7 +33,7 @@ jobs:
             -o /tmp/jarvis-kws/model.tar.bz2
           tar -xjf /tmp/jarvis-kws/model.tar.bz2 -C /tmp/jarvis-kws
           MODEL_DIR="$(find /tmp/jarvis-kws -mindepth 1 -maxdepth 1 -type d | head -n 1)"
-          python -m pip install --disable-pip-version-check sherpa-onnx==1.13.8
+          python -m pip install --disable-pip-version-check sherpa-onnx==1.13.8 sentencepiece
           printf 'JARVIS @JARVIS\n' > /tmp/jarvis-kws/keywords_raw.txt
           sherpa-onnx-cli text2token \
             --tokens "$MODEL_DIR/tokens.txt" \
