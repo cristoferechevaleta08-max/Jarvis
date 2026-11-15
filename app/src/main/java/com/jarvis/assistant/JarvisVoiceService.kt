@@ -6,7 +6,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.media.AudioFormat
 import android.media.AudioRecord
@@ -15,7 +14,6 @@ import android.os.Build
 import android.os.IBinder
 import android.os.Handler
 import android.os.Looper
-import android.util.Base64
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.core.app.NotificationCompat
@@ -387,9 +385,6 @@ class JarvisVoiceService : Service() {
         // Releasing them here as well caused a possible double-release race.
         runCatching { audioRecord?.stop() }
         audioRecord = null
-        speechRecognizer?.cancel()
-        speechRecognizer?.destroy()
-        speechRecognizer = null
         tts?.stop()
         tts?.shutdown()
         tts = null
@@ -408,7 +403,7 @@ class JarvisVoiceService : Service() {
         private const val NOTIFICATION_ID = 7102
         private const val SAMPLE_RATE = 16000
         private const val PRE_ROLL_SAMPLES = SAMPLE_RATE * 2
-        private const val SILENCE_CHUNKS = 18
+        private const val SILENCE_CHUNKS = 30
         private const val MAX_CAPTURE_CHUNKS = 120
         private const val SPEECH_RMS_THRESHOLD = 0.012
     }
