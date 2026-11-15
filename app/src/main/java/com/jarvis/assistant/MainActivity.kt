@@ -121,7 +121,7 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
         mutableStateListOf<ChatMessage>().apply {
             addAll(loadConversation(context))
             if (isEmpty()) {
-                add(ChatMessage("Sistemas en línea. Soy JARVIS, tu asistente personal. Puedes escribirme o utilizar el botón del micrófono. Prueba: hora, fecha, batería o ayuda.", false))
+                add(ChatMessage("Sistemas en línea. Soy JARVIS, tu asistente personal. La escucha automática se inicia al abrir la aplicación. Di «Jarvis» seguido de tu pregunta. Prueba: hora, fecha, batería o ayuda.", false))
             }
         }
     }
@@ -317,6 +317,18 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
         }
     }
 
+    // Inicio automático: solicita el permiso una sola vez y comienza a escuchar
+    // cada vez que se abre JARVIS, sin exigir pulsar el botón de manos libres.
+    LaunchedEffect(Unit) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            handsFree = true
+            voiceStatus = "INICIANDO ESCUCHA AUTOMÁTICA · DI «JARVIS»"
+        } else {
+            pendingHandsFreePermission = true
+            microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
     MaterialTheme(colorScheme = darkColorScheme(
         background = Night, surface = Panel, primary = Cyan,
         onBackground = Color(0xFFEAF4FF), onSurface = Color(0xFFEAF4FF)
@@ -388,30 +400,11 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
                     ),
                     maxLines = 3
                 )
-                IconButton(onClick = { startVoiceInput() }, enabled = !isThinking) {
-                    Icon(Icons.Default.Mic, contentDescription = "Hablar con JARVIS", tint = Cyan)
-                }
                 IconButton(onClick = {
                     respondTo(input)
                     input = ""
                 }, enabled = !isThinking) {
                     Icon(Icons.Default.Send, contentDescription = "Enviar", tint = Cyan)
-                }
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                Button(
-                    onClick = {
-                        if (handsFree) handsFree = false
-                        else if (speechRecognizer == null) voiceStatus = "ESTE DISPOSITIVO NO OFRECE RECONOCIMIENTO DE VOZ"
-                        else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) handsFree = true
-                        else { pendingHandsFreePermission = true; microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) }
-                    },
-                    enabled = !isThinking,
-                    colors = ButtonDefaults.buttonColors(containerColor = if (handsFree) Color(0xFF8B3038) else Color(0xFF123747), contentColor = Color.White)
-                ) {
-                    Icon(Icons.Default.Mic, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (handsFree) "DESACTIVAR MANOS LIBRES" else "ACTIVAR «JARVIS»")
                 }
             }
             Text(
