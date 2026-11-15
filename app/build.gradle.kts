@@ -14,6 +14,9 @@ android {
         targetSdk = 35
         versionCode = 4
         versionName = "0.4.0"
+        // Target modern ARM Android phones (including Huawei Nova Y90) to
+        // avoid bundling unused x86 and 32-bit native inference libraries.
+        ndk { abiFilters += listOf("arm64-v8a") }
     }
 
     buildFeatures { compose = true }
