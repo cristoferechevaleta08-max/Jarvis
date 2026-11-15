@@ -39,9 +39,9 @@ internal fun processLocalCommand(context: Context, message: String): String? {
             else "No pude consultar el nivel de batería en este dispositivo."
         }
         "ayuda", "que puedes hacer", "comandos", "ayuda jarvis" ->
-            "Puedo decirte la hora, la fecha y el nivel de batería sin conexión. También puedes decir «borrar conversación» para eliminar el historial guardado. La inteligencia artificial remota todavía está pendiente."
+            "Puedo decirte la hora, la fecha y el nivel de batería sin conexión. También puedes decir «borrar conversación» para eliminar el historial guardado. Las preguntas abiertas se responden mediante el servidor de IA en la nube cuando está configurado."
         "quien eres", "que eres" ->
-            "Soy JARVIS, un asistente Android en desarrollo. Tengo interfaz, voz local, reconocimiento de voz compatible, memoria local y comandos básicos sin conexión. La inteligencia artificial remota aún no está conectada."
+            "Soy JARVIS, un asistente Android en desarrollo. Tengo interfaz, voz local, reconocimiento de voz compatible, memoria local y comandos básicos sin conexión. Puedo responder preguntas abiertas mediante el servidor de IA en la nube cuando está configurado."
         else -> null
     }
 }
