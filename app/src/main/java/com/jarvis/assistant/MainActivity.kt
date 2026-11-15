@@ -96,12 +96,12 @@ class MainActivity : ComponentActivity() {
 private fun JarvisScreen(onSpeak: (String) -> Unit) {
     val context = LocalContext.current
     var input by remember { mutableStateOf("") }
-    var voiceStatus by remember { mutableStateOf("VOZ LOCAL · IA REMOTA PENDIENTE") }
+    var voiceStatus by remember { mutableStateOf("VOZ LOCAL · COMANDOS SIN CONEXIÓN") }
     val messages = remember(context) {
         mutableStateListOf<ChatMessage>().apply {
             addAll(loadConversation(context))
             if (isEmpty()) {
-                add(ChatMessage("Sistemas en línea. Soy JARVIS, tu asistente personal. Puedes escribirme o utilizar el botón del micrófono.", false))
+                add(ChatMessage("Sistemas en línea. Soy JARVIS, tu asistente personal. Puedes escribirme o utilizar el botón del micrófono. Prueba: hora, fecha, batería o ayuda.", false))
             }
         }
     }
@@ -110,7 +110,8 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
         val text = userText.trim()
         if (text.isNotEmpty()) {
             messages.add(ChatMessage(text, true))
-            val reply = "He recibido tu mensaje. Mi interfaz y voz local están operativas. Para responder con inteligencia artificial avanzada falta conectar un servidor seguro."
+            val reply = processLocalCommand(context, text)
+                ?: "He recibido tu mensaje. La interfaz, la voz local y los comandos básicos funcionan. Para mantener una conversación inteligente sobre cualquier tema todavía falta conectar el servidor de IA."
             messages.add(ChatMessage(reply, false))
             if (messages.size > MAX_SAVED_MESSAGES) {
                 repeat(messages.size - MAX_SAVED_MESSAGES) { messages.removeAt(0) }
