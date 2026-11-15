@@ -9,11 +9,11 @@ import java.net.URL
 import android.util.Base64
 
 internal object CloudAiClient {
-    suspend fun askAudio(
+    suspend fun transcribeAudio(
         endpoint: String,
         wav: ByteArray,
         history: List<Pair<String, String>>
-    ): Pair<String, String> = withContext(Dispatchers.IO) {
+    ): String = withContext(Dispatchers.IO) {
         val voiceEndpoint = endpoint.trimEnd('/').replace(Regex("/chat$"), "/voice")
         if (voiceEndpoint == endpoint.trimEnd('/')) {
             throw IllegalArgumentException("La URL del servidor debe terminar en /chat para habilitar la voz.")
@@ -44,10 +44,8 @@ internal object CloudAiClient {
             }
             val response = JSONObject(body)
             val transcript = response.optString("transcript").trim()
-            val answer = response.optString("answer").trim()
             if (transcript.isBlank()) throw IllegalStateException("No pude reconocer las palabras.")
-            if (answer.isBlank()) throw IllegalStateException("La IA devolvió una respuesta vacía.")
-            transcript to answer
+            transcript
         } finally {
             connection.disconnect()
         }
