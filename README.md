@@ -5,8 +5,8 @@ Aplicación Android nativa en Kotlin + Jetpack Compose. Las funciones básicas d
 ## Funciones de la aplicación
 - Interfaz conversacional móvil con tema oscuro futurista.
 - Entrada de texto y reconocimiento de voz en español mediante el proveedor de voz disponible en Android.
-- Modo manos libres dentro de la aplicación: al activarlo, mantiene el reconocimiento de voz mientras JARVIS está abierto, espera la palabra **«Jarvis»** y acepta la pregunta en esa misma frase o en la siguiente.
-- El modo manos libres se pausa mientras se procesa una consulta a la IA y se reanuda después. No funciona como escucha permanente con la aplicación cerrada ni promete activación con la pantalla apagada.
+- Escucha manos libres automática al abrir la aplicación: solicita el permiso de micrófono la primera vez y, una vez concedido, espera la palabra **«Jarvis»** sin que el usuario tenga que pulsar un botón. Acepta la pregunta en la misma frase o en la siguiente.
+- La escucha se pausa mientras se procesa una consulta a la IA y se reanuda después. En esta versión funciona mientras la aplicación permanece abierta y visible; todavía no es un servicio permanente para escuchar con la aplicación cerrada o la pantalla apagada.
 - Síntesis de voz local en español.
 - Historial local persistente de hasta 100 mensajes.
 - Comandos locales: hora, fecha, batería, ayuda, identidad y borrar conversación.
@@ -49,7 +49,7 @@ Guarda la dirección. Con conexión a Internet, escribe o di «Jarvis» seguido 
 
 ## Limitaciones actuales
 - El usuario debe desplegar el Worker y proporcionar su URL; el repositorio no contiene secretos ni puede desplegarlo dentro de la cuenta del usuario sin autorización.
-- El modo manos libres actual solo funciona con la aplicación abierta y visible. Usa el proveedor de reconocimiento de voz disponible en Android, puede consumir batería y datos, y puede no estar disponible en algunas configuraciones Huawei. No es un detector local dedicado de palabra clave ni escucha con la pantalla apagada; para eso se necesita una implementación adicional con servicio en primer plano y pruebas específicas.
+- La escucha se inicia automáticamente al abrir la aplicación y después de conceder el permiso de micrófono. Android exige que el usuario conceda ese permiso; ninguna app legítima puede saltarse ese diálogo. Esta versión solo escucha mientras JARVIS está abierto y visible. Para escuchar con la pantalla apagada o la app en segundo plano hace falta un servicio de micrófono en primer plano con notificación persistente y pruebas específicas en Huawei; aún no está implementado.
 - El reconocimiento de voz depende del proveedor instalado en Android. No se presupone que Huawei tenga Google Speech Services.
 - El tono grave depende del motor y las voces TTS disponibles en el dispositivo; no se puede garantizar una voz masculina idéntica en todos los teléfonos.
 - Los comandos locales todavía no ejecutan acciones arbitrarias ni controlan ajustes sensibles del teléfono.
