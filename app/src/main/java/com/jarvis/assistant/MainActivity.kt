@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -65,6 +66,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun JarvisScreen(onSpeak: (String) -> Unit) {
+    val context = LocalContext.current
     var input by remember { mutableStateOf("") }
     var voiceStatus by remember { mutableStateOf("VOZ LOCAL · IA REMOTA PENDIENTE") }
     val messages = remember {
@@ -116,7 +118,7 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
 
     fun startVoiceInput() {
         if (ContextCompat.checkSelfPermission(
-                androidx.compose.ui.platform.LocalContext.current,
+                context,
                 Manifest.permission.RECORD_AUDIO
             ) == PackageManager.PERMISSION_GRANTED
         ) {
