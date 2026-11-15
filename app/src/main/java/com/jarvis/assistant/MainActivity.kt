@@ -109,6 +109,14 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
     fun respondTo(userText: String) {
         val text = userText.trim()
         if (text.isNotEmpty()) {
+            if (isClearHistoryCommand(text)) {
+                messages.clear()
+                val reply = "He borrado el historial de conversación guardado en este dispositivo."
+                messages.add(ChatMessage(reply, false))
+                saveConversation(context, messages)
+                onSpeak(reply)
+                return
+            }
             messages.add(ChatMessage(text, true))
             val reply = processLocalCommand(context, text)
                 ?: "He recibido tu mensaje. La interfaz, la voz local y los comandos básicos funcionan. Para mantener una conversación inteligente sobre cualquier tema todavía falta conectar el servidor de IA."
