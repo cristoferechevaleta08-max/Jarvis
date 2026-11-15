@@ -1,6 +1,7 @@
 package com.jarvis.assistant
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -30,12 +31,40 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.Locale
 
 private val Night = Color(0xFF080D18)
 private val Panel = Color(0xFF111C2D)
 private val Cyan = Color(0xFF55D6E8)
+private const val PREFS_NAME = "jarvis_preferences"
+private const val CHAT_KEY = "conversation_history"
+private const val MAX_SAVED_MESSAGES = 100
+
 private data class ChatMessage(val text: String, val fromUser: Boolean)
+
+private fun loadConversation(context: Context): List<ChatMessage> {
+    val raw = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .getString(CHAT_KEY, null) ?: return emptyList()
+    return runCatching {
+        val json = JSONArray(raw)
+        (0 until json.length()).mapNotNull { index ->
+            val item = json.optJSONObject(index) ?: return@mapNotNull null
+            val text = item.optString("text")
+            if (text.isBlank()) null else ChatMessage(text, item.optBoolean("fromUser"))
+        }
+    }.getOrDefault(emptyList())
+}
+
+private fun saveConversation(context: Context, messages: List<ChatMessage>) {
+    val json = JSONArray()
+    messages.takeLast(MAX_SAVED_MESSAGES).forEach { message ->
+        json.put(JSONObject().put("text", message.text).put("fromUser", message.fromUser))
+    }
+    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .edit().putString(CHAT_KEY, json.toString()).apply()
+}
 
 class MainActivity : ComponentActivity() {
     private var tts: TextToSpeech? = null
@@ -45,7 +74,6 @@ class MainActivity : ComponentActivity() {
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale("es", "ES")
-                // A slightly lower pitch gives the system voice a calmer, deeper character.
                 tts?.setPitch(0.88f)
                 tts?.setSpeechRate(0.94f)
             }
@@ -69,10 +97,13 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
     val context = LocalContext.current
     var input by remember { mutableStateOf("") }
     var voiceStatus by remember { mutableStateOf("VOZ LOCAL · IA REMOTA PENDIENTE") }
-    val messages = remember {
-        mutableStateListOf(
-            ChatMessage("Sistemas en línea. Soy JARVIS, tu asistente personal. Puedes escribirme o utilizar el botón del micrófono.", false)
-        )
+    val messages = remember(context) {
+        mutableStateListOf<ChatMessage>().apply {
+            addAll(loadConversation(context))
+            if (isEmpty()) {
+                add(ChatMessage("Sistemas en línea. Soy JARVIS, tu asistente personal. Puedes escribirme o utilizar el botón del micrófono.", false))
+            }
+        }
     }
 
     fun respondTo(userText: String) {
@@ -81,6 +112,10 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
             messages.add(ChatMessage(text, true))
             val reply = "He recibido tu mensaje. Mi interfaz y voz local están operativas. Para responder con inteligencia artificial avanzada falta conectar un servidor seguro."
             messages.add(ChatMessage(reply, false))
+            if (messages.size > MAX_SAVED_MESSAGES) {
+                repeat(messages.size - MAX_SAVED_MESSAGES) { messages.removeAt(0) }
+            }
+            saveConversation(context, messages)
             onSpeak(reply)
         }
     }
@@ -117,11 +152,7 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
     }
 
     fun startVoiceInput() {
-        if (ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.RECORD_AUDIO
-            ) == PackageManager.PERMISSION_GRANTED
-        ) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
