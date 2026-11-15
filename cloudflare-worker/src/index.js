@@ -43,6 +43,9 @@ export default {
         }
         transcript = (transcriptionData.text || "").replace(/^\s*jarvis[\s,.:;!?¡¿-]*/i, "").trim();
         if (!transcript) return json({ error: "Escuché «Jarvis», pero no recibí una pregunta. Inténtalo otra vez." }, 422, cors);
+        // Return only the recognized text. The Android app handles local device
+        // commands first, then sends non-local questions to /chat.
+        return json({ transcript }, 200, cors);
       }
 
       const messages = Array.isArray(body.messages) ? body.messages.slice(-12) : [];
