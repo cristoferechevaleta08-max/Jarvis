@@ -273,7 +273,9 @@ class JarvisVoiceService : Service() {
                 val history = readHistory().takeLast(12).dropLast(1).map {
                     (if (it.first) "user" else "assistant") to it.second
                 }
-                val answer = CloudAiClient.ask(endpoint, cleanQuestion, history)
+                val apiKey = ClaudeKeyStore.get(this@JarvisVoiceService)
+                if (apiKey.isBlank()) throw IllegalStateException("Configura tu clave de Claude en Ajustes.")
+                val answer = CloudAiClient.ask(apiKey, cleanQuestion, history)
                 appendHistory(answer, false)
                 broadcast(ACTION_ASSISTANT, answer)
                 speakAndResume(answer)
@@ -311,7 +313,9 @@ class JarvisVoiceService : Service() {
                 val history = readHistory().takeLast(12).map {
                     (if (it.first) "user" else "assistant") to it.second
                 }.dropLast(1)
-                val answer = CloudAiClient.ask(endpoint, question, history)
+                val apiKey = ClaudeKeyStore.get(this@JarvisVoiceService)
+                if (apiKey.isBlank()) throw IllegalStateException("Configura tu clave de Claude en Ajustes.")
+                val answer = CloudAiClient.ask(apiKey, question, history)
                 appendHistory(answer, false)
                 broadcast(ACTION_ASSISTANT, answer)
                 speakAndResume(answer)
