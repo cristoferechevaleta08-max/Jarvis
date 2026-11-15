@@ -20,8 +20,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -40,6 +42,7 @@ private val Panel = Color(0xFF111C2D)
 private val Cyan = Color(0xFF55D6E8)
 private const val PREFS_NAME = "jarvis_preferences"
 private const val CHAT_KEY = "conversation_history"
+private const val SERVER_KEY = "cloud_ai_endpoint"
 private const val MAX_SAVED_MESSAGES = 100
 
 private data class ChatMessage(val text: String, val fromUser: Boolean)
@@ -89,6 +92,38 @@ class MainActivity : ComponentActivity() {
         tts?.stop()
         tts?.shutdown()
         super.onDestroy()
+
+        if (showSettings) {
+            AlertDialog(
+                onDismissRequest = { showSettings = false },
+                title = { Text("Conectar JARVIS Cloud") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Introduce la URL HTTPS de tu servidor Cloudflare Worker terminada en /chat. La clave de OpenAI se guarda en el servidor, nunca en el APK.")
+                        OutlinedTextField(
+                            value = endpointDraft,
+                            onValueChange = { endpointDraft = it },
+                            singleLine = true,
+                            placeholder = { Text("https://tu-worker.workers.dev/chat") }
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val value = endpointDraft.trim()
+                        if (value.isBlank() || value.startsWith("https://")) {
+                            endpoint = value
+                            preferences.edit().putString(SERVER_KEY, value).apply()
+                            showSettings = false
+                            voiceStatus = if (value.isBlank()) "SERVIDOR SIN CONFIGURAR" else "URL DEL SERVIDOR GUARDADA"
+                        } else voiceStatus = "LA URL DEBE COMENZAR CON HTTPS://"
+                    }) { Text("Guardar") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSettings = false }) { Text("Cancelar") }
+                }
+            )
+        }
     }
 }
 
@@ -96,7 +131,13 @@ class MainActivity : ComponentActivity() {
 private fun JarvisScreen(onSpeak: (String) -> Unit) {
     val context = LocalContext.current
     var input by remember { mutableStateOf("") }
-    var voiceStatus by remember { mutableStateOf("VOZ LOCAL · COMANDOS SIN CONEXIÓN") }
+    var voiceStatus by remember { mutableStateOf("DI «JARVIS» Y TU PREGUNTA") }
+    val scope = rememberCoroutineScope()
+    val preferences = remember(context) { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
+    var endpoint by remember { mutableStateOf(preferences.getString(SERVER_KEY, "").orEmpty()) }
+    var endpointDraft by remember { mutableStateOf(endpoint) }
+    var showSettings by remember { mutableStateOf(false) }
+    var isThinking by remember { mutableStateOf(false) }
     val messages = remember(context) {
         mutableStateListOf<ChatMessage>().apply {
             addAll(loadConversation(context))
@@ -106,26 +147,69 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
         }
     }
 
-    fun respondTo(userText: String) {
-        val text = userText.trim()
-        if (text.isNotEmpty()) {
-            if (isClearHistoryCommand(text)) {
-                messages.clear()
-                val reply = "He borrado el historial de conversación guardado en este dispositivo."
+    fun respondTo(userText: String, fromVoice: Boolean = false) {
+        val raw = userText.trim()
+        if (raw.isEmpty() || isThinking) return
+        val wakePattern = Regex("(?i)^jarvis[\\s,:;.!¿?¡-]*")
+        if (fromVoice && !wakePattern.containsMatchIn(raw)) {
+            voiceStatus = "DI «JARVIS» ANTES DE TU PREGUNTA"
+            return
+        }
+        val text = raw.replace(wakePattern, "").trim()
+        if (text.isBlank()) {
+            voiceStatus = "DI «JARVIS» Y DESPUÉS TU PREGUNTA"
+            return
+        }
+        if (isClearHistoryCommand(text)) {
+            messages.clear()
+            val reply = "He borrado el historial de conversación guardado en este dispositivo."
+            messages.add(ChatMessage(reply, false))
+            saveConversation(context, messages)
+            onSpeak(reply)
+            return
+        }
+        messages.add(ChatMessage(text, true))
+        val localReply = processLocalCommand(context, text)
+        if (localReply != null) {
+            messages.add(ChatMessage(localReply, false))
+            saveConversation(context, messages)
+            onSpeak(localReply)
+            return
+        }
+        val configuredEndpoint = endpoint.trim()
+        if (configuredEndpoint.isBlank()) {
+            val reply = "Aún falta conectar JARVIS Cloud. Abre Ajustes y configura la dirección HTTPS del servidor de IA."
+            messages.add(ChatMessage(reply, false))
+            saveConversation(context, messages)
+            onSpeak(reply)
+            voiceStatus = "FALTA CONFIGURAR EL SERVIDOR DE IA"
+            return
+        }
+        saveConversation(context, messages)
+        isThinking = true
+        voiceStatus = "CONECTANDO CON LA IA EN LA NUBE…"
+        scope.launch {
+            try {
+                val history = messages.dropLast(1).takeLast(12).map {
+                    (if (it.fromUser) "user" else "assistant") to it.text
+                }
+                val answer = CloudAiClient.ask(configuredEndpoint, text, history)
+                messages.add(ChatMessage(answer, false))
+                if (messages.size > MAX_SAVED_MESSAGES) {
+                    repeat(messages.size - MAX_SAVED_MESSAGES) { messages.removeAt(0) }
+                }
+                saveConversation(context, messages)
+                onSpeak(answer)
+                voiceStatus = "IA EN LA NUBE · CONECTADO"
+            } catch (error: Exception) {
+                val reply = "No pude conectar con la IA: ${error.message ?: "revisa internet y la URL del servidor"}"
                 messages.add(ChatMessage(reply, false))
                 saveConversation(context, messages)
                 onSpeak(reply)
-                return
+                voiceStatus = "ERROR DE CONEXIÓN · REVISA EL SERVIDOR"
+            } finally {
+                isThinking = false
             }
-            messages.add(ChatMessage(text, true))
-            val reply = processLocalCommand(context, text)
-                ?: "He recibido tu mensaje. La interfaz, la voz local y los comandos básicos funcionan. Para mantener una conversación inteligente sobre cualquier tema todavía falta conectar el servidor de IA."
-            messages.add(ChatMessage(reply, false))
-            if (messages.size > MAX_SAVED_MESSAGES) {
-                repeat(messages.size - MAX_SAVED_MESSAGES) { messages.removeAt(0) }
-            }
-            saveConversation(context, messages)
-            onSpeak(reply)
         }
     }
 
@@ -137,7 +221,7 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
             ?.firstOrNull()
         if (result.resultCode == android.app.Activity.RESULT_OK && !spokenText.isNullOrBlank()) {
             voiceStatus = "MENSAJE DE VOZ RECIBIDO"
-            respondTo(spokenText)
+            respondTo(spokenText, fromVoice = true)
         } else {
             voiceStatus = "NO SE RECIBIÓ AUDIO · INTENTA OTRA VEZ"
         }
@@ -150,7 +234,7 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
-                putExtra(RecognizerIntent.EXTRA_PROMPT, "Habla con JARVIS")
+                putExtra(RecognizerIntent.EXTRA_PROMPT, "Di Jarvis y después tu pregunta")
             }
             runCatching { speechResultLauncher.launch(intent) }
                 .onSuccess { voiceStatus = "ESCUCHANDO · HABLA AHORA" }
@@ -235,7 +319,7 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
                     value = input,
                     onValueChange = { input = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("Escribe a JARVIS…", color = Color(0xFF7890A8)) },
+                    placeholder = { Text("Jarvis, pregúntame algo…", color = Color(0xFF7890A8)) },
                     shape = RoundedCornerShape(18.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Cyan, unfocusedBorderColor = Color(0xFF294056),
@@ -243,18 +327,18 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
                     ),
                     maxLines = 3
                 )
-                IconButton(onClick = { startVoiceInput() }) {
+                IconButton(onClick = { startVoiceInput() }, enabled = !isThinking) {
                     Icon(Icons.Default.Mic, contentDescription = "Hablar con JARVIS", tint = Cyan)
                 }
                 IconButton(onClick = {
                     respondTo(input)
                     input = ""
-                }) {
+                }, enabled = !isThinking) {
                     Icon(Icons.Default.Send, contentDescription = "Enviar", tint = Cyan)
                 }
             }
             Text(
-                voiceStatus,
+                if (isThinking) "PROCESANDO EN LA NUBE…" else voiceStatus,
                 color = Color(0xFF71899F), fontSize = 9.sp, letterSpacing = 1.sp,
                 modifier = Modifier.padding(top = 8.dp, start = 4.dp)
             )
