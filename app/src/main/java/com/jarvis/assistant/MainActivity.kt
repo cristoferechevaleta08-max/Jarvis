@@ -111,6 +111,8 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
     var voiceStatus by remember { mutableStateOf("DI «JARVIS» Y TU PREGUNTA") }
     val scope = rememberCoroutineScope()
     val preferences = remember(context) { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
+    var apiKey by remember { mutableStateOf(ClaudeKeyStore.get(context)) }
+    var apiKeyDraft by remember { mutableStateOf("") }
     var endpoint by remember { mutableStateOf(preferences.getString(SERVER_KEY, "").orEmpty()) }
     var endpointDraft by remember { mutableStateOf(endpoint) }
     var showSettings by remember { mutableStateOf(false) }
@@ -156,13 +158,13 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
             onSpeak(localReply)
             return
         }
-        val configuredEndpoint = endpoint.trim()
-        if (configuredEndpoint.isBlank()) {
-            val reply = "Aún falta conectar JARVIS Cloud. Abre Ajustes y configura la dirección HTTPS del servidor de IA."
+        val configuredApiKey = ClaudeKeyStore.get(context)
+        if (configuredApiKey.isBlank()) {
+            val reply = "Todavía falta tu clave de Claude. Abre Ajustes y guárdala para conectar JARVIS."
             messages.add(ChatMessage(reply, false))
             saveConversation(context, messages)
             onSpeak(reply)
-            voiceStatus = "FALTA CONFIGURAR EL SERVIDOR DE IA"
+            voiceStatus = "FALTA CONFIGURAR CLAUDE"
             return
         }
         saveConversation(context, messages)
@@ -173,7 +175,7 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
                 val history = messages.dropLast(1).takeLast(12).map {
                     (if (it.fromUser) "user" else "assistant") to it.text
                 }
-                val answer = CloudAiClient.ask(configuredEndpoint, text, history)
+                val answer = CloudAiClient.ask(configuredApiKey, text, history)
                 messages.add(ChatMessage(answer, false))
                 if (messages.size > MAX_SAVED_MESSAGES) {
                     repeat(messages.size - MAX_SAVED_MESSAGES) { messages.removeAt(0) }
@@ -182,7 +184,7 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
                 onSpeak(answer)
                 voiceStatus = "IA EN LA NUBE · CONECTADO"
             } catch (error: Exception) {
-                val reply = "No pude conectar con la IA: ${error.message ?: "revisa internet y la URL del servidor"}"
+                val reply = "No pude conectar con la IA: ${error.message ?: "revisa internet y tu clave de Anthropic"}"
                 messages.add(ChatMessage(reply, false))
                 saveConversation(context, messages)
                 onSpeak(reply)
@@ -281,10 +283,10 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
                     Text("J.A.R.V.I.S.", color = Cyan, fontSize = 25.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
                     Text("ASISTENTE PERSONAL CON IA", color = Color(0xFF8EA6BC), fontSize = 10.sp, letterSpacing = 2.sp)
                 }
-                Surface(shape = CircleShape, color = if (endpoint.isNotBlank()) Color(0xFF123B43) else Color(0xFF49351B)) {
-                    Text(if (endpoint.isNotBlank()) "● CLOUD" else "● CONFIG", color = if (endpoint.isNotBlank()) Cyan else Color(0xFFFFC66D), modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp), fontSize = 10.sp)
+                Surface(shape = CircleShape, color = if (apiKey.isNotBlank()) Color(0xFF123B43) else Color(0xFF49351B)) {
+                    Text(if (apiKey.isNotBlank()) "● CLAUDE" else "● CONFIG", color = if (apiKey.isNotBlank()) Cyan else Color(0xFFFFC66D), modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp), fontSize = 10.sp)
                 }
-                IconButton(onClick = { endpointDraft = endpoint; showSettings = true }) {
+                IconButton(onClick = { apiKeyDraft = ""; endpointDraft = endpoint; showSettings = true }) {
                     Icon(Icons.Default.Settings, contentDescription = "Ajustes", tint = Cyan)
                 }
             }
@@ -355,27 +357,41 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
         if (showSettings) {
             AlertDialog(
                 onDismissRequest = { showSettings = false },
-                title = { Text("Conectar JARVIS Cloud") },
+                title = { Text("Ajustes de JARVIS") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Pega la URL HTTPS de tu Cloudflare Worker terminada en /chat. La clave de OpenAI permanece en el servidor, nunca dentro del APK.")
+                        Text("Claude se conecta directamente desde el teléfono. La clave se guarda cifrada en este dispositivo y no se incluye en el repositorio.")
+                        OutlinedTextField(
+                            value = apiKeyDraft,
+                            onValueChange = { apiKeyDraft = it },
+                            singleLine = true,
+                            placeholder = { Text("Nueva clave de Anthropic (sk-ant-...)") },
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
+                        )
+                        Text("Para el reconocimiento de preguntas por voz sigue siendo necesario el Worker de transcripción. Es opcional para el chat escrito.")
                         OutlinedTextField(
                             value = endpointDraft,
                             onValueChange = { endpointDraft = it },
                             singleLine = true,
-                            placeholder = { Text("https://tu-worker.workers.dev/chat") }
+                            placeholder = { Text("https://tu-worker.workers.dev/chat (opcional)") }
                         )
                     }
                 },
                 confirmButton = {
                     TextButton(onClick = {
-                        val value = endpointDraft.trim()
-                        if (value.isBlank() || value.startsWith("https://")) {
-                            endpoint = value
-                            preferences.edit().putString(SERVER_KEY, value).apply()
+                        val key = apiKeyDraft.trim()
+                        if (key.isNotBlank() && !key.startsWith("sk-ant-")) {
+                            voiceStatus = "LA CLAVE DE ANTHROPIC NO PARECE VÁLIDA"
+                        } else if (endpointDraft.isNotBlank() && !endpointDraft.startsWith("https://")) {
+                            voiceStatus = "LA URL DE TRANSCRIPCIÓN DEBE USAR HTTPS"
+                        } else {
+                            if (key.isNotBlank()) ClaudeKeyStore.save(context, key)
+                            endpoint = endpointDraft.trim()
+                            preferences.edit().putString(SERVER_KEY, endpoint).apply()
+                            apiKey = ClaudeKeyStore.get(context)
                             showSettings = false
-                            voiceStatus = if (value.isBlank()) "SERVIDOR SIN CONFIGURAR" else "URL DEL SERVIDOR GUARDADA"
-                        } else voiceStatus = "LA URL DEBE COMENZAR CON HTTPS://"
+                            voiceStatus = if (apiKey.isBlank()) "FALTA CONFIGURAR CLAUDE" else "CLAUDE CONFIGURADO"
+                        }
                     }) { Text("Guardar") }
                 },
                 dismissButton = {
