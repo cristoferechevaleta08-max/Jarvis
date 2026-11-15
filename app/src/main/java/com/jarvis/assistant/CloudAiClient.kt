@@ -11,8 +11,7 @@ import android.util.Base64
 internal object CloudAiClient {
     suspend fun transcribeAudio(
         endpoint: String,
-        wav: ByteArray,
-        history: List<Pair<String, String>>
+        wav: ByteArray
     ): String = withContext(Dispatchers.IO) {
         val voiceEndpoint = endpoint.trimEnd('/').replace(Regex("/chat$"), "/voice")
         if (voiceEndpoint == endpoint.trimEnd('/')) {
@@ -27,13 +26,8 @@ internal object CloudAiClient {
             setRequestProperty("Accept", "application/json")
         }
         try {
-            val messages = JSONArray()
-            history.takeLast(12).forEach { (role, content) ->
-                messages.put(JSONObject().put("role", role).put("content", content))
-            }
             val payload = JSONObject()
                 .put("audioBase64", Base64.encodeToString(wav, Base64.NO_WRAP))
-                .put("messages", messages)
             connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
