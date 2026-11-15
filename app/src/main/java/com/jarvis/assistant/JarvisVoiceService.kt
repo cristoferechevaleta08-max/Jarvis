@@ -253,15 +253,27 @@ class JarvisVoiceService : Service() {
         broadcast(ACTION_STATUS, "TRANSCRIBIENDO TU PREGUNTA Y CONSULTANDO LA IA…")
         serviceScope.launch {
             try {
-                val history = readHistory().takeLast(12).map {
+                val transcript = CloudAiClient.transcribeAudio(endpoint, wav)
+                val cleanQuestion = transcript.replace(Regex("(?i)^\\s*jarvis[\\s,.:;!?¡¿-]*"), "").trim()
+                if (cleanQuestion.isBlank()) {
+                    speakAndResume("Te escuché decir Jarvis, pero no recibí la pregunta. Inténtalo otra vez.")
+                    return@launch
+                }
+                appendHistory(cleanQuestion, true)
+                broadcast(ACTION_USER, cleanQuestion)
+
+                val localAnswer = processLocalCommand(this@JarvisVoiceService, cleanQuestion)
+                if (localAnswer != null) {
+                    appendHistory(localAnswer, false)
+                    broadcast(ACTION_ASSISTANT, localAnswer)
+                    speakAndResume(localAnswer)
+                    return@launch
+                }
+
+                val history = readHistory().takeLast(12).dropLast(1).map {
                     (if (it.first) "user" else "assistant") to it.second
                 }
-                val (transcript, answer) = CloudAiClient.askAudio(endpoint, wav, history)
-                val cleanQuestion = transcript.replace(Regex("(?i)^\\s*jarvis[\\s,.:;!?¡¿-]*"), "").trim()
-                if (cleanQuestion.isNotBlank()) {
-                    appendHistory(cleanQuestion, true)
-                    broadcast(ACTION_USER, cleanQuestion)
-                }
+                val answer = CloudAiClient.ask(endpoint, cleanQuestion, history)
                 appendHistory(answer, false)
                 broadcast(ACTION_ASSISTANT, answer)
                 speakAndResume(answer)
