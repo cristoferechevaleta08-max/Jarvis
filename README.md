@@ -4,7 +4,7 @@ Aplicación Android nativa en Kotlin + Jetpack Compose. Las funciones básicas d
 
 ## Funciones de la aplicación
 - Interfaz conversacional móvil con tema oscuro futurista.
-- Entrada de texto y reconocimiento de voz en español mediante el proveedor de voz disponible en Android.
+- Entrada de texto y activación manos libres por la palabra «Jarvis»; la pregunta completa se captura en PCM/WAV y se transcribe en la nube.
 - Servicio de micrófono en primer plano con notificación persistente y motor sherpa-onnx para detectar localmente la palabra **«Jarvis»**. Mientras espera, el audio se procesa en el dispositivo y no se envía a la nube.
 - El servicio de escucha puede continuar con la pantalla apagada mientras Android y la gestión de batería del fabricante lo permitan. Debe iniciarse desde la aplicación visible después de conceder el permiso de micrófono; Android muestra una notificación permanente.
 - Síntesis de voz local en español.
@@ -39,7 +39,7 @@ Abre JARVIS, toca el icono de ajustes y pega la URL del Worker añadiendo `/chat
 
 `https://jarvis-cloud.<tu-cuenta>.workers.dev/chat`
 
-Guarda la dirección. Con conexión a Internet, escribe o di «Jarvis» seguido de tu pregunta. Las respuestas abiertas se enviarán al modelo de IA y JARVIS las leerá en voz alta.
+Guarda la dirección. Con conexión a Internet, di «Jarvis» seguido de tu pregunta en una sola intervención. El detector local activa la captura, el Worker transcribe el audio y envía el texto al modelo de IA. JARVIS lee la respuesta en voz alta.
 
 ### Seguridad y costes
 - No subas claves de OpenAI a GitHub ni las incluyas en el APK.
@@ -50,9 +50,9 @@ Guarda la dirección. Con conexión a Internet, escribe o di «Jarvis» seguido 
 ## Limitaciones actuales
 - El usuario debe desplegar el Worker y proporcionar su URL; el repositorio no contiene secretos ni puede desplegarlo dentro de la cuenta del usuario sin autorización.
 - La detección local utiliza un modelo KWS entrenado en inglés. Su precisión con pronunciación y acentos españoles debe validarse y ajustarse en el Huawei Nova Y90.
-- Después de detectar «Jarvis», la captura de la pregunta utiliza el proveedor de reconocimiento de voz instalado en Android. El detector local no depende de Google Play Services, pero la transcripción sí requiere un proveedor compatible.
+- Después de detectar «Jarvis», la app conserva unos segundos de audio previos y captura la pregunta hasta detectar silencio. Solo el audio posterior a la activación se envía al endpoint `/voice` del Worker para transcripción; la espera de la palabra clave sigue siendo local y no transmite audio.
 - Android exige que el usuario conceda el permiso de micrófono y que el servicio de micrófono en primer plano se inicie mientras la aplicación está visible. No es posible saltarse esos controles del sistema. EMUI puede aplicar restricciones de batería; hay que validar el comportamiento real con la pantalla apagada en el Huawei Nova Y90.
-- La transcripción de preguntas depende del proveedor de voz instalado en Android; el detector local de palabra clave no depende de Google Play Services.
+- La transcripción requiere conexión a Internet, un Worker desplegado y una clave de API con acceso al modelo de transcripción. El reconocimiento local de la palabra de activación no depende de Google Play Services.
 - El tono grave depende del motor y las voces TTS disponibles en el dispositivo; no se puede garantizar una voz masculina idéntica en todos los teléfonos.
 - Los comandos locales todavía no ejecutan acciones arbitrarias ni controlan ajustes sensibles del teléfono.
 
