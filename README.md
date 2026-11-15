@@ -7,7 +7,7 @@ Aplicación Android nativa en Kotlin + Jetpack Compose, diseñada para mantener 
 - Entrada de texto y reconocimiento de voz en español mediante el proveedor disponible en Android.
 - Síntesis de voz local en español, con velocidad y tono ajustados.
 - Historial local persistente: conserva los últimos 100 mensajes entre aperturas de la aplicación.
-- Comandos sin conexión: consultar hora, fecha y nivel de batería; mostrar ayuda e información del asistente.
+- Comandos sin conexión: consultar hora, fecha y nivel de batería; mostrar ayuda e información del asistente; borrar el historial guardado mediante «borrar conversación».
 - Workflow de GitHub Actions para compilar y publicar un APK debug.
 
 ## Limitaciones actuales
