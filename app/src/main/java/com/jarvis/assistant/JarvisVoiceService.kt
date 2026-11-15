@@ -169,6 +169,11 @@ class JarvisVoiceService : Service() {
                 if (stream === localStream) stream = null
                 if (spotter === localSpotter) spotter = null
                 workerRunning = false
+                // Recover automatically from transient microphone/model errors.
+                // Do not restart while a question is being handled or the service is stopping.
+                if (!stopping && !waitingForQuestion) {
+                    mainHandler.postDelayed({ startWakeWordLoop() }, 3000L)
+                }
             }
         }
     }
@@ -335,16 +340,14 @@ class JarvisVoiceService : Service() {
 
     override fun onDestroy() {
         stopping = true
+        // stop() unblocks AudioRecord.read(); the worker thread owns and releases
+        // AudioRecord, OnlineStream and KeywordSpotter in its finally block.
+        // Releasing them here as well caused a possible double-release race.
         runCatching { audioRecord?.stop() }
-        audioRecord?.release()
         audioRecord = null
         speechRecognizer?.cancel()
         speechRecognizer?.destroy()
         speechRecognizer = null
-        spotter?.release()
-        stream?.release()
-        spotter = null
-        stream = null
         tts?.stop()
         tts?.shutdown()
         tts = null
