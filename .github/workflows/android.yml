@@ -20,6 +20,26 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Prepare offline wake-word model
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/jarvis-kws app/src/main/assets/jarvis-kws
+          curl -fL --retry 3 --retry-delay 2 \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2 \
+            -o /tmp/jarvis-kws/model.tar.bz2
+          tar -xjf /tmp/jarvis-kws/model.tar.bz2 -C /tmp/jarvis-kws
+          MODEL_DIR="$(find /tmp/jarvis-kws -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          python -m pip install --disable-pip-version-check sherpa-onnx==1.13.8
+          printf 'JARVIS @JARVIS\n' > /tmp/jarvis-kws/keywords_raw.txt
+          sherpa-onnx-cli text2token \
+            --tokens "$MODEL_DIR/tokens.txt" \
+            --tokens-type bpe \
+            --bpe-model "$MODEL_DIR/bpe.model" \
+            /tmp/jarvis-kws/keywords_raw.txt "$MODEL_DIR/keywords.txt"
+          cp "$MODEL_DIR/encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx" app/src/main/assets/jarvis-kws/
+          cp "$MODEL_DIR/decoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx" app/src/main/assets/jarvis-kws/
+          cp "$MODEL_DIR/joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx" app/src/main/assets/jarvis-kws/
+          cp "$MODEL_DIR/tokens.txt" "$MODEL_DIR/bpe.model" "$MODEL_DIR/keywords.txt" app/src/main/assets/jarvis-kws/
       - name: Build debug APK
         run: gradle assembleDebug
       - name: Upload APK
