@@ -271,10 +271,13 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("J.A.R.V.I.S.", color = Cyan, fontSize = 25.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
-                    Text("ASISTENTE PERSONAL", color = Color(0xFF8EA6BC), fontSize = 10.sp, letterSpacing = 2.sp)
+                    Text("ASISTENTE PERSONAL CON IA", color = Color(0xFF8EA6BC), fontSize = 10.sp, letterSpacing = 2.sp)
                 }
-                Surface(shape = CircleShape, color = Color(0xFF123B43)) {
-                    Text("● LOCAL", color = Cyan, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), fontSize = 10.sp)
+                Surface(shape = CircleShape, color = if (endpoint.isNotBlank()) Color(0xFF123B43) else Color(0xFF49351B)) {
+                    Text(if (endpoint.isNotBlank()) "● CLOUD" else "● CONFIG", color = if (endpoint.isNotBlank()) Cyan else Color(0xFFFFC66D), modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp), fontSize = 10.sp)
+                }
+                IconButton(onClick = { endpointDraft = endpoint; showSettings = true }) {
+                    Icon(Icons.Default.Settings, contentDescription = "Ajustes", tint = Cyan)
                 }
             }
             Spacer(Modifier.height(28.dp))
@@ -343,5 +346,38 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
                 modifier = Modifier.padding(top = 8.dp, start = 4.dp)
             )
         }
+
+        if (showSettings) {
+            AlertDialog(
+                onDismissRequest = { showSettings = false },
+                title = { Text("Conectar JARVIS Cloud") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Pega la URL HTTPS de tu Cloudflare Worker terminada en /chat. La clave de OpenAI permanece en el servidor, nunca dentro del APK.")
+                        OutlinedTextField(
+                            value = endpointDraft,
+                            onValueChange = { endpointDraft = it },
+                            singleLine = true,
+                            placeholder = { Text("https://tu-worker.workers.dev/chat") }
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val value = endpointDraft.trim()
+                        if (value.isBlank() || value.startsWith("https://")) {
+                            endpoint = value
+                            preferences.edit().putString(SERVER_KEY, value).apply()
+                            showSettings = false
+                            voiceStatus = if (value.isBlank()) "SERVIDOR SIN CONFIGURAR" else "URL DEL SERVIDOR GUARDADA"
+                        } else voiceStatus = "LA URL DEBE COMENZAR CON HTTPS://"
+                    }) { Text("Guardar") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSettings = false }) { Text("Cancelar") }
+                }
+            )
+        }
+
     }
 }
