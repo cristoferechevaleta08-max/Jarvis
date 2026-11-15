@@ -41,7 +41,7 @@ export default {
         if (!transcriptionResponse.ok) {
           return json({ error: transcriptionData.error?.message || "No se pudo transcribir el audio." }, 502, cors);
         }
-        transcript = (transcriptionData.text || "").replace(/^\\s*jarvis[\\s,.:;!?¡¿-]*/i, "").trim();
+        transcript = (transcriptionData.text || "").replace(/^\s*jarvis[\s,.:;!?¡¿-]*/i, "").trim();
         if (!transcript) return json({ error: "Escuché «Jarvis», pero no recibí una pregunta. Inténtalo otra vez." }, 422, cors);
       }
 
@@ -75,7 +75,7 @@ export default {
       const answer = data.output_text || (data.output || [])
         .flatMap(item => item.content || [])
         .filter(part => part.type === "output_text")
-        .map(part => part.text).join("\\n");
+        .map(part => part.text).join("\n");
       if (!answer) return json({ error: "La IA no generó texto." }, 502, cors);
       return json(isVoice ? { transcript, answer } : { answer }, 200, cors);
     } catch (error) {
