@@ -414,7 +414,7 @@ class JarvisVoiceService : Service() {
         private const val CHANNEL_ID = "jarvis_voice_service"
         private const val NOTIFICATION_ID = 7102
         private const val SAMPLE_RATE = 16000
-        private const val PRE_ROLL_SAMPLES = SAMPLE_RATE * 2
+        private const val PRE_ROLL_SAMPLES = SAMPLE_RATE
         private const val SILENCE_CHUNKS = 30
         private const val MAX_CAPTURE_CHUNKS = 120
         private const val SPEECH_RMS_THRESHOLD = 0.012
