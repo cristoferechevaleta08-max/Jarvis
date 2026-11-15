@@ -2,6 +2,9 @@ package com.jarvis.assistant
 
 import android.Manifest
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+import android.os.Build
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -115,8 +118,6 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
     var handsFree by remember { mutableStateOf(false) }
     var waitingForQuestion by remember { mutableStateOf(false) }
     var pendingHandsFreePermission by remember { mutableStateOf(false) }
-    val speechRecognizer = remember(context) { if (SpeechRecognizer.isRecognitionAvailable(context)) SpeechRecognizer.createSpeechRecognizer(context) else null }
-    val speechHandler = remember { Handler(Looper.getMainLooper()) }
     val messages = remember(context) {
         mutableStateListOf<ChatMessage>().apply {
             addAll(loadConversation(context))
@@ -198,131 +199,68 @@ private fun JarvisScreen(onSpeak: (String) -> Unit) {
     val thinkingLatest by rememberUpdatedState(isThinking)
     val statusLatest by rememberUpdatedState<(String) -> Unit>({ voiceStatus = it })
 
-    DisposableEffect(speechRecognizer) {
-        if (speechRecognizer == null) {
-            statusLatest("RECONOCIMIENTO DE VOZ NO DISPONIBLE EN ESTE DISPOSITIVO")
-            onDispose { }
+    LaunchedEffect(handsFree) {
+        if (handsFree) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                voiceStatus = "INICIANDO MOTOR LOCAL DE «JARVIS»…"
+                val serviceIntent = Intent(context, JarvisVoiceService::class.java)
+                runCatching { ContextCompat.startForegroundService(context, serviceIntent) }
+                    .onFailure { voiceStatus = "NO SE PUDO INICIAR EL SERVICIO DE VOZ: ${it.message}" }
+            } else {
+                handsFree = false
+                voiceStatus = "SE NECESITA PERMISO DE MICRÓFONO"
+            }
         } else {
-            val listenIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
-                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-            }
-            fun listenAgain() {
-                speechHandler.postDelayed({
-                    if (handsFreeLatest && !thinkingLatest) runCatching { speechRecognizer.startListening(listenIntent) }
-                        .onFailure { statusLatest("NO SE PUDO REINICIAR LA ESCUCHA") }
-                }, 650L)
-            }
-            speechRecognizer.setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) { statusLatest(if (waitingLatest) "JARVIS TE ESCUCHA · FORMULA TU PREGUNTA" else "MODO MANOS LIBRES · DI «JARVIS»") }
-                override fun onBeginningOfSpeech() {}
-                override fun onRmsChanged(rmsdB: Float) {}
-                override fun onBufferReceived(buffer: ByteArray?) {}
-                override fun onEndOfSpeech() {}
-                override fun onError(error: Int) {
-                    if (!handsFreeLatest) return
-                    if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) { statusLatest("FALTA EL PERMISO DE MICRÓFONO"); handsFree = false }
-                    else { statusLatest("SIGUIENDO A LA ESCUCHA · DI «JARVIS»"); listenAgain() }
-                }
-                override fun onResults(results: Bundle?) {
-                    if (!handsFreeLatest) return
-                    val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
-                    if (spoken.isNotBlank()) {
-                        if (waitingLatest) { waitingForQuestion = false; respondToLatest("Jarvis, $spoken", true) }
-                        else {
-                            val wake = Regex("(?i)^jarvis\\b[\\s,:;.!¿?¡-]*(.*)$").find(spoken)
-                            if (wake != null) {
-                                val question = wake.groupValues.getOrNull(1).orEmpty().trim()
-                                if (question.isNotBlank()) respondToLatest("Jarvis, $question", true)
-                                else { waitingForQuestion = true; statusLatest("TE ESCUCHO · ¿QUÉ QUIERES SABER?") }
-                            } else statusLatest("ESPERANDO LA PALABRA «JARVIS»")
-                        }
-                    }
-                    listenAgain()
-                }
-                override fun onPartialResults(partialResults: Bundle?) {}
-                override fun onEvent(eventType: Int, params: Bundle?) {}
-            })
-            onDispose { speechHandler.removeCallbacksAndMessages(null); speechRecognizer.cancel(); speechRecognizer.destroy() }
+            context.stopService(Intent(context, JarvisVoiceService::class.java))
+            voiceStatus = "ESCUCHA DE JARVIS DETENIDA"
         }
     }
 
-    LaunchedEffect(handsFree, isThinking) {
-        if (handsFree && !isThinking) {
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                waitingForQuestion = false
-                speechHandler.post {
-                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
-                        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-                    }
-                    runCatching { speechRecognizer?.startListening(intent) }.onFailure { voiceStatus = "NO SE PUDO INICIAR EL RECONOCIMIENTO DE VOZ" }
-                }
-            } else { handsFree = false; voiceStatus = "SE NECESITA PERMISO DE MICRÓFONO" }
-        } else if (!handsFree) { waitingForQuestion = false; speechRecognizer?.cancel(); voiceStatus = "MODO MANOS LIBRES DESACTIVADO" }
-        else speechRecognizer?.cancel()
-    }
-    val speechResultLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val spokenText = result.data
-            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-            ?.firstOrNull()
-        if (result.resultCode == android.app.Activity.RESULT_OK && !spokenText.isNullOrBlank()) {
-            voiceStatus = "MENSAJE DE VOZ RECIBIDO"
-            respondTo(spokenText, fromVoice = true)
-        } else {
-            voiceStatus = "NO SE RECIBIÓ AUDIO · INTENTA OTRA VEZ"
+    DisposableEffect(context) {
+        val filter = IntentFilter().apply {
+            addAction(JarvisVoiceService.ACTION_STATUS)
+            addAction(JarvisVoiceService.ACTION_USER)
+            addAction(JarvisVoiceService.ACTION_ASSISTANT)
         }
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                val value = intent?.getStringExtra(JarvisVoiceService.EXTRA_TEXT).orEmpty()
+                when (intent?.action) {
+                    JarvisVoiceService.ACTION_STATUS -> voiceStatus = value
+                    JarvisVoiceService.ACTION_USER -> {
+                        messages.add(ChatMessage(value, true))
+                        saveConversation(context, messages)
+                    }
+                    JarvisVoiceService.ACTION_ASSISTANT -> {
+                        messages.add(ChatMessage(value, false))
+                        while (messages.size > MAX_SAVED_MESSAGES) messages.removeAt(0)
+                        saveConversation(context, messages)
+                    }
+                }
+            }
+        }
+        if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        else @Suppress("DEPRECATION") context.registerReceiver(receiver, filter)
+        onDispose { runCatching { context.unregisterReceiver(receiver) } }
     }
 
     val microphonePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
+        pendingHandsFreePermission = false
         if (granted) {
-            if (pendingHandsFreePermission) {
-                pendingHandsFreePermission = false
-                handsFree = true
-            } else {
-                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
-                    putExtra(RecognizerIntent.EXTRA_PROMPT, "Di Jarvis y después tu pregunta")
-                }
-                runCatching { speechResultLauncher.launch(intent) }
-                    .onSuccess { voiceStatus = "ESCUCHANDO · HABLA AHORA" }
-                    .onFailure { voiceStatus = "NO HAY SERVICIO DE RECONOCIMIENTO DE VOZ INSTALADO" }
-            }
+            handsFree = true
+            voiceStatus = "PERMISO CONCEDIDO · INICIANDO JARVIS"
         } else {
-            pendingHandsFreePermission = false
             voiceStatus = "PERMISO DE MICRÓFONO DENEGADO"
         }
     }
 
-    fun startVoiceInput() {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
-                putExtra(RecognizerIntent.EXTRA_PROMPT, "Habla con JARVIS")
-            }
-            runCatching { speechResultLauncher.launch(intent) }
-                .onSuccess { voiceStatus = "ESCUCHANDO · HABLA AHORA" }
-                .onFailure { voiceStatus = "NO HAY SERVICIO DE RECONOCIMIENTO DE VOZ INSTALADO" }
-        } else {
-            microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-        }
-    }
-
-    // Inicio automático: solicita el permiso una sola vez y comienza a escuchar
-    // cada vez que se abre JARVIS, sin exigir pulsar el botón de manos libres.
+    // Solicita el permiso una sola vez. Después el servicio local arranca automáticamente.
     LaunchedEffect(Unit) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             handsFree = true
-            voiceStatus = "INICIANDO ESCUCHA AUTOMÁTICA · DI «JARVIS»"
+            voiceStatus = "INICIANDO ESCUCHA AUTOMÁTICA"
         } else {
             pendingHandsFreePermission = true
             microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
