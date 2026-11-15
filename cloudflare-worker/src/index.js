@@ -24,7 +24,7 @@ export default {
 
       const input = messages.map(m => ({
         role: m.role,
-        content: [{ type: "input_text", text: m.content }]
+        content: m.content
       }));
       const upstream = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
